@@ -1,5 +1,5 @@
-if !has('python')
-    echo "Error: Required vim compiled with +python"
+if !has('python3')
+    echo "Error: Required vim compiled with +python3"
     finish
 endif
 
@@ -19,16 +19,25 @@ function! s:GetCursorWord()
 endfunction
 
 
-python << EOF
-import vim,urllib,re,collections,xml.etree.ElementTree as ET
-
+python3 << EOF
 # -*- coding: utf-8 -*-
 
-WARN_NOT_FIND = " 找不到该单词的释义".decode('utf-8')
-ERROR_QUERY = " 有道翻译查询出错!".decode('utf-8')
-NETWORK_ERROR = " 无法连接有道服务器!".decode('utf-8')
-QUERY_BLACK_LIST = ['.', '|', '^', '$', '\\', '[', ']', '{', '}', '*', '+',
-        '?', '(', ')', '&', '=', '\"', '\'', '\t']
+import vim
+import urllib.request
+import urllib.parse
+import urllib.error
+import re
+import collections
+import xml.etree.ElementTree as ET
+
+WARN_NOT_FIND = " 找不到该单词的释义"
+ERROR_QUERY = " 有道翻译查询出错!"
+NETWORK_ERROR = " 无法连接有道服务器!"
+QUERY_BLACK_LIST = [
+    '.', '|', '^', '$', '\\', '[', ']', '{', '}', '*', '+', '?', '(', ')', '&',
+    '=', '\"', '\'', '\t'
+]
+
 
 def preprocess_word(word):
     word = word.strip()
@@ -45,19 +54,21 @@ def preprocess_word(word):
         word.append(piece[lastIndex:])
     return ' '.join(word).strip()
 
+
 def get_word_info(word):
     word = preprocess_word(word)
     if not word:
         return ''
     try:
-        r = urllib.urlopen("http://dict.youdao.com" + "/fsearch?q=" + word.encode('utf-8'))
-    except IOError, e:
+        r = urllib.request.urlopen("http://dict.youdao.com" + "/fsearch?q=" +
+                                   word)
+    except IOError as e:
         return NETWORK_ERROR
     if r.getcode() == 200:
         doc = ET.fromstring(r.read())
 
         phrase = doc.find(".//return-phrase").text
-        p = re.compile(r"^%s$"%word, re.IGNORECASE)
+        p = re.compile(r"^%s$" % word, re.IGNORECASE)
         if p.match(phrase):
             info = collections.defaultdict(list)
 
@@ -65,57 +76,59 @@ def get_word_info(word):
                 return WARN_NOT_FIND
 
             for el in doc.findall(".//"):
-                if el.tag in ('return-phrase','phonetic-symbol'):
+                if el.tag in ('return-phrase', 'phonetic-symbol'):
                     if el.text:
-                        info[el.tag].append(el.text.encode("utf-8"))
-                elif el.tag in ('content','value'):
+                        info[el.tag].append(el.text)
+                elif el.tag in ('content', 'value'):
                     if el.text:
-                        info[el.tag].append(el.text.encode("utf-8"))
+                        info[el.tag].append(el.text)
 
-            for k,v in info.items():
+            for k, v in list(info.items()):
                 info[k] = ' | '.join(v) if k == "content" else ' '.join(v)
 
             tpl = ' %(return-phrase)s'
             if info["phonetic-symbol"]:
                 tpl = tpl + ' [%(phonetic-symbol)s]'
-            tpl = tpl +' %(content)s'
+            tpl = tpl + ' %(content)s'
 
             return tpl % info
         else:
             try:
-                r = urllib.urlopen("http://fanyi.youdao.com" + "/translate?i=" + word.encode('utf-8'))
-            except IOError, e:
+                r = urllib.request.urlopen("http://fanyi.youdao.com" +
+                                           "/translate?i=" + word)
+            except IOError as e:
                 return NETWORK_ERROR
-            p = re.compile(r"\"translateResult\":\[\[{\"src\":\"%s\",\"tgt\":\"(?P<result>.*)\"}\]\]"
-                    % word.encode('utf-8'))
+            p = re.compile(
+                r"\"translateResult\":\[\[{\"src\":\"%s\",\"tgt\":\"(?P<result>.*)\"}\]\]"
+                % word)
             s = p.search(r.read())
             if s:
-                return " %s" % s.group('result').decode('utf-8')
+                return " %s" % s.group('result')
             else:
                 return ERROR_QUERY
     else:
-        return  ERROR_QUERY
+        return ERROR_QUERY
+
 
 def translate_visual_selection(lines):
-    lines = lines.decode('utf-8')
+    lines = lines
     for line in lines.split('\n'):
         info = get_word_info(line)
-        vim.command('echo "'+ info +'"')
-
+        vim.command('echo "' + info + '"')
 EOF
 
 function! s:YoudaoVisualTranslate()
-    python translate_visual_selection(vim.eval("<SID>GetVisualSelection()"))
+    python3 translate_visual_selection(vim.eval("<SID>GetVisualSelection()"))
 endfunction
 
 function! s:YoudaoCursorTranslate()
-    python translate_visual_selection(vim.eval("<SID>GetCursorWord()"))
+    python3 translate_visual_selection(vim.eval("<SID>GetCursorWord()"))
 endfunction
 
 function! s:YoudaoEnterTranslate()
     let word = input("Please enter the word: ")
     redraw!
-    python translate_visual_selection(vim.eval("word"))
+    python3 translate_visual_selection(vim.eval("word"))
 endfunction
 
 command! Ydv call <SID>YoudaoVisualTranslate()
